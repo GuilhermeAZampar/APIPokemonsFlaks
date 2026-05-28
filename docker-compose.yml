@@ -1,0 +1,24 @@
+services:
+
+  flask_api:
+    build: .
+    container_name: flask_api
+
+    ports:
+      - "5000:5000"
+
+    environment:
+      - DATABASE_URL=sqlite:///pokemons.db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+    depends_on:
+      - redis
+
+  redis:
+    image: redis
+
+    container_name: redis_flask
+
+    ports:
+      - "6379:6379"
