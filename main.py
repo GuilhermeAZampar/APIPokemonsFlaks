@@ -1,5 +1,9 @@
+from sys import orig_argv
+
 from flask import Flask,jsonify,request
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_cors import CORS
 from dotenv import load_dotenv
 import redis
 import os
@@ -9,11 +13,13 @@ import json
 load_dotenv()
 
 app=Flask(__name__)
+CORS(app,origins=["http://localhost:5173"])
 
 app.config["SQLALCHEMY_DATABASE_URI"]=os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"]=False
 
 db=SQLAlchemy(app)
+migrate=Migrate(app,db)
 
 REDIS_HOST=os.getenv("REDIS_HOST","localhost")
 REDIS_PORT=int(os.getenv("REDIS_PORT","6379"))
@@ -27,6 +33,7 @@ class PokemonDB(db.Model):
     nome_pokemon=db.Column(db.String(100),index=True)
     tipo_pokemon=db.Column(db.String(100),index=True)
     nivel_pokemon=db.Column(db.Integer,index=True)
+    imagem_pokemon=db.Column(db.String(500))
 
 
 with app.app_context():
@@ -85,9 +92,21 @@ def listar():
     if not pokedb:
         return jsonify({"message":"Erro nenhum pokemon encontrado"}),404
     
-    resposta={"page":page,"limit":limit,"pokemons":[{"id_pokemon":poke.id_pokemon,"nome_pokemon":poke.nome_pokemon,"tipo_pokemon":poke.tipo_pokemon,"nivel_pokemon":poke.nivel_pokemon}for poke in pokedb]}
+    resposta={"page":page,"limit":limit,"pokemons":[{"id_pokemon":poke.id_pokemon,"nome_pokemon":poke.nome_pokemon,"tipo_pokemon":poke.tipo_pokemon,"nivel_pokemon":poke.nivel_pokemon,"imagem_pokemon":poke.imagem_pokemon}for poke in pokedb]}
     redis_client.setex(cache_key,30,json.dumps(resposta))
     return jsonify(resposta)
+
+
+@app.route("/detalhes/<int:id_pokemon>",methods=["GET"])
+def rota_detalhes(id_pokemon):
+
+    pokedb=PokemonDB.query.filter_by(id_pokemon=id_pokemon).first()
+    if not pokedb:
+        return jsonify({"message":"Erro pokemon nao encontrado"}),404
+
+    return jsonify({"nome_pokemon":pokedb.nome_pokemon,"tipo_pokemon":pokedb.tipo_pokemon,"nivel_pokemon":pokedb.nivel_pokemon,"imagem_pokemon":pokedb.imagem_pokemon})
+
+
 
 
 @app.route("/adicionar",methods=["POST"])
@@ -99,7 +118,7 @@ def adicionar():
     if pokedb:
         return jsonify({"message":"Erro pokemon ja cadastrado"}),404
     
-    novo_pokemon=PokemonDB(nome_pokemon=dados["nome_pokemon"],tipo_pokemon=dados["tipo_pokemon"],nivel_pokemon=dados["nivel_pokemon"])
+    novo_pokemon=PokemonDB(nome_pokemon=dados["nome_pokemon"],tipo_pokemon=dados["tipo_pokemon"],nivel_pokemon=dados["nivel_pokemon"],imagem_pokemon=dados["imagem_pokemon"])
     
     db.session.add(novo_pokemon)
     db.session.commit()
@@ -141,6 +160,7 @@ def evoluir(id_pokemon):
     pokedb.nome_pokemon=dados["nome_pokemon"]
     pokedb.tipo_pokemon=dados["tipo_pokemon"]
     pokedb.nivel_pokemon=dados["nivel_pokemon"]
+    pokedb.imagem_pokemon=dados["imagem_pokemon"]
     db.session.commit()
 
     salvar_redis(pokedb.id_pokemon,dados)
